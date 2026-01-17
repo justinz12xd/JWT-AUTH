@@ -1,202 +1,109 @@
-## 🐾 Love4Pets - 🔐 Auth Service - Pilar 1
+# 🐾 Love4Pets - 🔐 Microservicio de Autenticación
 
-## Descripción 
-
-Microservicio de autenticación independiente para Love4Pets con JWT (access + refresh tokens), validación local y base de datos propia.
+Microservicio de autenticación JWT independiente con validación local.
 
 ## 📋 Índice
-
-1. [Características](#características)
+1. [Stack & Características](#stack--características)
 2. [Instalación](#instalación)
-3. [Base de Datos](#base-de-datos)
-4. [API Endpoints](#api-endpoints)
-5. [Integración Rust](#integración-rust)
-6. [Seguridad](#seguridad)
-7. [Validación Local](#validación-local)
-8. [Comandos](#comandos)
-9. [Cumplimiento Pilar 1](#cumplimiento-pilar-1)
+3. [API](#api)
+4. [Integración Rust](#integración-rust)
+5. [Validación Local](#validación-local)
+6. [Cumplimiento](#cumplimiento)
 
 ---
 
-## Características
+## Stack & Características
 
-- JWT: Access tokens (15 min) + Refresh tokens (7 días)
-- Validación local sin llamadas HTTP entre servicios
-- Base de datos PostgreSQL independiente
+**Stack**: Node.js, TypeScript, Express, TypeORM, PostgreSQL, Docker
+
+- JWT: Access (15min) + Refresh (7d)
+- Validación local sin HTTP calls
+- BD propia: users, refresh_tokens, revoked_tokens
 - Rate limiting, bcrypt, blacklist
-- 6 endpoints RESTful
-
-**Stack**: Node.js 18+, TypeScript, Express, TypeORM, PostgreSQL, Docker
 
 ---
 
 ## Instalación
 
-**Docker**:
 ```bash
+# Docker
 docker-compose up -d
+
+# Local
+npm install && cp .env.example .env && npm run dev
 ```
 
-**Local**:
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
-
-**Variables críticas en `.env`**:
+**.env crítico**:
 ```env
-PORT=8090
 ACCESS_TOKEN_SECRET=cambiar-en-produccion
 REFRESH_TOKEN_SECRET=cambiar-en-produccion
 ```
-
-> `ACCESS_TOKEN_SECRET` debe ser idéntico en Auth Service y Love4Pets REST.
-
----
-
-## Base de Datos
-
-**auth_db** contiene 3 tablas:
-- `users`: usuarios con password bcrypt
-- `refresh_tokens`: tokens de renovación
-- `revoked_tokens`: blacklist
+> `ACCESS_TOKEN_SECRET` = `JWT_SECRET` en Love4Pets REST
 
 ---
 
-## API Endpoints
+## API
 
-Base URL: `http://localhost:8090`
+Base: `http://localhost:8090`
 
-| Endpoint | Método | Autenticación | Descripción |
-|----------|--------|---------------|-------------|
+| Endpoint | Método | Auth | Función |
+|----------|--------|------|---------|
 | `/auth/register` | POST | No | Crear usuario |
 | `/auth/login` | POST | No | Obtener tokens |
-| `/auth/refresh` | POST | No | Renovar access token |
-| `/auth/me` | GET | Sí | Info del usuario |
+| `/auth/refresh` | POST | No | Renovar token |
+| `/auth/me` | GET | Sí | Info usuario |
 | `/auth/logout` | POST | Sí | Revocar tokens |
-| `/auth/validate` | GET | Sí | Validar token (uso interno) |
-
-**Ejemplo Login**:
-```bash
-curl -X POST http://localhost:8090/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"Pass123!"}'
-```
+| `/auth/validate` | GET | Sí | Validar (interno) |
 
 ---
 
 ## Integración Rust
 
-### Dependencias
-```toml
-jsonwebtoken = "9.2"
-```
+**Cargo.toml**: `jsonwebtoken = "9.2"`
 
-### Configuración
-```env
-JWT_SECRET=mismo-valor-que-ACCESS_TOKEN_SECRET-del-auth-service
-```
-
-### Implementación Mínima
-
-**Claims** (`claims.rs`):
+**JWT Validation** (`jwt.rs`):
 ```rust
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Claims {
-    pub userId: String,
-    pub email: String,
-    pub exp: usize,
-}
-```
-
-**Validación** (`jwt.rs`):
-```rust
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
-
 pub fn validate_token(token: &str) -> Result<Claims, String> {
-    let secret = env::var("JWT_SECRET")?;
     decode::<Claims>(
         token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(env::var("JWT_SECRET")?.as_bytes()),
         &Validation::new(Algorithm::HS256)
-    )
-    .map(|data| data.claims)
-    .map_err(|_| "Token inválido".into())
+    ).map(|d| d.claims).map_err(|_| "Invalid".into())
 }
 ```
 
 **Middleware** (`auth.rs`):
 ```rust
 pub async fn auth_middleware(headers: HeaderMap, mut req: Request, next: Next) 
-    -> Result<Response, StatusCode> 
-{
+    -> Result<Response, StatusCode> {
     let token = headers.get("authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let claims = validate_token(token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
     
-    req.extensions_mut().insert(claims);
+    req.extensions_mut().insert(validate_token(token)?);
     Ok(next.run(req).await)
 }
 ```
 
 ---
 
-## Seguridad
-
-| Mecanismo | Configuración |
-|-----------|---------------|
-| Rate Limiting | Login: 5/15min, Registro: 3/hora |
-| Password Hashing | bcrypt 10 rounds |
-| Token Blacklist | Tabla `revoked_tokens` |
-| Headers | Helmet (CORS, XSS, etc.) |
-
----
-
 ## Validación Local
 
-**❌ Antipatrón**:
-```
-Service → HTTP al Auth Service /validate (latencia, dependencia)
-```
+❌ **Antipatrón**: Service → HTTP /validate (latencia)  
+✅ **Implementado**: Service → Validación local (<1ms)
 
-**✅ Implementado**:
-```
-Service → Valida JWT localmente (<1ms, sin dependencias)
-```
+**Cómo funciona**:
+1. Auth Service y Love4Pets comparten `JWT_SECRET`
+2. Tokens firmados con HMAC-SHA256
+3. Validación local: verifica firma + expiración
+4. Sin llamadas HTTP entre servicios
 
-**Funcionamiento**:
-- Auth Service y otros servicios comparten `JWT_SECRET`
-- Tokens firmados con HMAC-SHA256
-- Validación local verifica firma y expiración
-- Sin llamadas HTTP entre servicios
+**Seguridad**: Rate limiting (5/15min login), bcrypt (10 rounds), blacklist
 
 ---
 
-## Comandos
-
-```bash
-# Docker
-docker-compose up -d
-docker-compose logs -f auth-service
-docker-compose down
-
-# Desarrollo
-npm run dev
-npm run build
-npm start
-
-# Tests
-./test-pilar1.ps1
-```
-
----
-
-## Cumplimiento Pilar 1
+## Cumplimiento
 
 | Requisito | Estado |
 |-----------|--------|
@@ -791,53 +698,6 @@ JWT-AUTH/
 ```
 
 ---
-
-## Resumen Ejecutivo
-
-### Objetivos Cumplidos
-
-Este microservicio implementa un sistema de autenticación empresarial completo, diseñado para operar de forma independiente dentro de una arquitectura de microservicios. Los componentes principales incluyen:
-
-1. **Servicio Independiente**: Desacoplado completamente del backend principal, con su propia base de datos y stack tecnológico
-2. **Sistema de Tokens Duales**: Implementación de access tokens (15 min) y refresh tokens (7 días) siguiendo mejores prácticas de seguridad
-3. **Validación Descentralizada**: Eliminación del antipatrón de validación centralizada mediante verificación local de JWT
-4. **Persistencia Robusta**: Base de datos PostgreSQL con 3 tablas optimizadas para operaciones de autenticación
-5. **API RESTful Completa**: 6 endpoints documentados con validación, rate limiting y manejo de errores
-6. **Seguridad Multicapa**: Implementación de bcrypt, rate limiting, blacklist y headers de seguridad
-
-### Ventajas Técnicas
-
-- **Performance**: Validación de tokens en <1ms vs >50ms con validación centralizada
-- **Resiliencia**: Servicios consumidores operan independientemente después del login inicial
-- **Escalabilidad**: Sin cuello de botella en Auth Service para requests frecuentes
-- **Mantenibilidad**: Separación clara de responsabilidades y código bien estructurado
-- **Portabilidad**: Contenedorización completa con Docker y docker-compose
-
-### Casos de Uso
-
-- Autenticación de usuarios en aplicaciones web y móviles
-- Single Sign-On (SSO) para múltiples microservicios
-- APIs públicas con control de acceso
-- Sistemas con requisitos de seguridad empresarial
-
----
-
-## Licencia
-
-MIT License - Ver archivo LICENSE para detalles
-
----
-
-## Soporte y Contacto
-
-Para preguntas técnicas o reportes de bugs, abrir un issue en el repositorio.
-
-**Desarrollado para**: Proyecto Love4Pets - ULEAM  
-**Evaluación**: Pilar 1 - Microservicio de Autenticación (15%)  
-**Año**: 2026
-  -H "Authorization: Bearer $TOKEN"
-# ✅ Debe funcionar normalmente
-```
 
 ### Pruebas de Integración
 
