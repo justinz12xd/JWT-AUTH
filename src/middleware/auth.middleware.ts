@@ -5,12 +5,14 @@ export interface AuthRequest extends Request {
   user?: {
     userId: string;
     email: string;
+    role?: string;
   };
 }
 
 /**
  * Middleware para validar el access token localmente
  * Este middleware NO consulta al Auth Service, solo verifica la firma y expiración
+ * Implementa validación LOCAL como requiere el Pilar 1
  */
 export const authenticate = async (
   req: AuthRequest,
@@ -42,9 +44,11 @@ export const authenticate = async (
     const payload = jwtService.verifyAccessToken(token);
 
     // Agregar información del usuario al request
+    // Compatible con ambos formatos: sub (estándar) y userId (legacy)
     req.user = {
-      userId: payload.userId,
+      userId: payload.sub || payload.userId,
       email: payload.email,
+      role: payload.role,
     };
 
     next();
@@ -74,8 +78,9 @@ export const optionalAuthenticate = async (
       if (!isRevoked) {
         const payload = jwtService.verifyAccessToken(token);
         req.user = {
-          userId: payload.userId,
+          userId: payload.sub || payload.userId,
           email: payload.email,
+          role: payload.role,
         };
       }
     }

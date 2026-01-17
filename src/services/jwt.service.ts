@@ -10,9 +10,15 @@ const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'refresh_secret
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 
+/**
+ * Payload del token compatible con API Gateway
+ * Usa 'sub' como estándar JWT para el ID de usuario
+ */
 export interface TokenPayload {
-  userId: string;
+  sub: string;      // Subject - ID del usuario (estándar JWT)
+  userId: string;   // Alias para compatibilidad
   email: string;
+  role?: string;    // Rol del usuario
 }
 
 export interface TokenPair {
@@ -23,27 +29,33 @@ export interface TokenPair {
 class JWTService {
   /**
    * Genera un par de tokens (access y refresh)
+   * El payload es compatible con el API Gateway para validación local
    */
   async generateTokenPair(
     user: User,
     ipAddress?: string,
     userAgent?: string
   ): Promise<TokenPair> {
+    // Payload compatible con API Gateway (usa 'sub' estándar JWT)
     const payload: TokenPayload = {
-      userId: user.id,
+      sub: user.id,       // Estándar JWT - requerido por API Gateway
+      userId: user.id,    // Alias para compatibilidad
       email: user.email,
+      role: 'normal',     // Rol por defecto
     };
 
     // Generar access token (corta duración)
     const accessToken = jwt.sign(payload, ACCESS_TOKEN_SECRET, {
-      expiresIn: '15m',
+      expiresIn: ACCESS_TOKEN_EXPIRES_IN,
       jwtid: uuidv4(),
+      algorithm: 'HS256',
     });
 
     // Generar refresh token (larga duración)
     const refreshToken = jwt.sign(payload, REFRESH_TOKEN_SECRET, {
-      expiresIn: '7d',
+      expiresIn: REFRESH_TOKEN_EXPIRES_IN,
       jwtid: uuidv4(),
+      algorithm: 'HS256',
     });
 
     // Guardar refresh token en la base de datos

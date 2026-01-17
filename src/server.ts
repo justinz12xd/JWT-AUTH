@@ -1,15 +1,15 @@
+import dotenv from 'dotenv';
+// Cargar variables de entorno ANTES de importar data-source
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { AppDataSource } from './data-source';
 import authRoutes from './routes/auth.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { apiLimiter } from './middleware/rate-limit.middleware';
 import jwtService from './services/jwt.service';
-
-// Cargar variables de entorno
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8090;
