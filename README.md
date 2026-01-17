@@ -1,7 +1,4 @@
-# 🔐 Auth Service - Pilar 1 (15%)
-
-**Universidad Laica Eloy Alfaro de Manabí (ULEAM)**  
-**Segundo Parcial - Aplicación para el Servidor Web**
+# 🐾 Love4Pets - 🔐 Auth Service - Pilar 1 
 
 ## Descripción
 

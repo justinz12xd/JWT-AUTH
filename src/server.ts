@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(apiLimiter);
 
 // Health check
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Auth Service is running',
@@ -44,7 +44,7 @@ app.use('/auth', authRoutes);
 app.use(errorHandler);
 
 // Ruta no encontrada
-app.use('*', (req: Request, res: Response) => {
+app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'Ruta no encontrada',
