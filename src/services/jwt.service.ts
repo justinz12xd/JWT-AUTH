@@ -5,8 +5,27 @@ import { RefreshToken } from '../entities/RefreshToken';
 import { RevokedToken } from '../entities/RevokedToken';
 import { User } from '../entities/User';
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'access_secret_key_change_this';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_key_change_this';
+// Decodificar el secret de base64 para compatibilidad con Supabase/Rust
+const rawAccessSecret = process.env.ACCESS_TOKEN_SECRET || 'access_secret_key_change_this';
+const rawRefreshSecret = process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_key_change_this';
+
+// Si el secret parece ser base64, decodificarlo; si no, usar como está
+const isBase64 = (str: string) => {
+  try {
+    return Buffer.from(str, 'base64').toString('base64') === str;
+  } catch {
+    return false;
+  }
+};
+
+const ACCESS_TOKEN_SECRET = isBase64(rawAccessSecret) 
+  ? Buffer.from(rawAccessSecret, 'base64')
+  : rawAccessSecret;
+
+const REFRESH_TOKEN_SECRET = isBase64(rawRefreshSecret)
+  ? Buffer.from(rawRefreshSecret, 'base64')
+  : rawRefreshSecret;
+
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 
@@ -19,6 +38,7 @@ export interface TokenPayload {
   userId: string;   // Alias para compatibilidad
   email: string;
   role?: string;    // Rol del usuario
+  aud?: string;     // Audience - requerido por REST API (Rust)
 }
 
 export interface TokenPair {
@@ -42,6 +62,7 @@ class JWTService {
       userId: user.id,    // Alias para compatibilidad
       email: user.email,
       role: 'normal',     // Rol por defecto
+      aud: 'authenticated', // Requerido por REST API (Rust)
     };
 
     // Generar access token (corta duración)
