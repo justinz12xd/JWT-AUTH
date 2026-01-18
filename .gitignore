@@ -3,3 +3,6 @@ dist
 .env
 *.log
 .DS_Store
+.env.example
+.gitignore
+package-lock.json
